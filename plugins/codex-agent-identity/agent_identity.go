@@ -13,11 +13,13 @@ import (
 const authorizationScheme = "AgentAssertion"
 
 type credential struct {
-	runtimeID  string
-	taskID     string
-	privateKey string
-	raw        map[string]any
-	name       string
+	runtimeID   string
+	taskID      string
+	privateKey  string
+	raw         map[string]any
+	name        string
+	identityKey string
+	taskKey     string
 }
 
 type assertionEnvelope struct {

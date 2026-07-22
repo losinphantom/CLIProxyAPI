@@ -99,17 +99,28 @@ func IsAgentIdentityAuth(auth *Auth) bool {
 	}
 	if normalizeAuthKind(authAttribute(auth, AttributeAuthKind)) == AuthKindAgentIdentity ||
 		normalizeAuthKind(authMetadataString(auth, AttributeAuthKind)) == AuthKindAgentIdentity ||
-		strings.EqualFold(authMetadataString(auth, "type"), AuthKindAgentIdentity) {
+		strings.EqualFold(authMetadataString(auth, "type"), AuthKindAgentIdentity) ||
+		strings.EqualFold(authMetadataString(auth, "auth_mode"), "agentIdentity") ||
+		strings.EqualFold(authMetadataString(auth, "authMode"), "agentIdentity") {
 		return true
 	}
-	privateKey := authMetadataString(auth, "agent_private_key")
-	if privateKey == "" {
-		privateKey = authMetadataString(auth, "private_key_pkcs8_base64")
+	metadata := auth.Metadata
+	for _, key := range []string{"agent_identity", "agentIdentity"} {
+		if nested, ok := metadata[key].(map[string]any); ok {
+			metadata = nested
+			break
+		}
 	}
-	if privateKey == "" {
-		privateKey = authMetadataString(auth, "private_key")
+	metadataString := func(keys ...string) string {
+		for _, key := range keys {
+			if value, ok := metadata[key].(string); ok && strings.TrimSpace(value) != "" {
+				return strings.TrimSpace(value)
+			}
+		}
+		return ""
 	}
-	return authMetadataString(auth, "agent_runtime_id") != "" && privateKey != ""
+	return metadataString("agent_runtime_id", "agentRuntimeId") != "" &&
+		metadataString("agent_private_key", "agentPrivateKey", "private_key_pkcs8_base64", "privateKeyPkcs8Base64", "private_key", "privateKey") != ""
 }
 
 func normalizeAuthSourceKind(source string) string {

@@ -78,8 +78,18 @@ func handlePluginMethod(runtime *agentIdentityRuntime, method string, request []
 
 func matchesAgentIdentity(metadata map[string]any) bool {
 	kind := firstString(metadata, "auth_kind")
-	if strings.EqualFold(kind, "agent_identity") || strings.EqualFold(kind, "agent-identity") || strings.EqualFold(firstString(metadata, "type"), "agent_identity") {
+	mode := firstString(metadata, "auth_mode", "authMode")
+	if strings.EqualFold(kind, "agent_identity") || strings.EqualFold(kind, "agent-identity") ||
+		strings.EqualFold(firstString(metadata, "type"), "agent_identity") || strings.EqualFold(mode, "agentIdentity") {
 		return true
 	}
-	return firstString(metadata, "agent_runtime_id") != "" && firstString(metadata, "agent_private_key", "private_key_pkcs8_base64", "private_key") != ""
+	identity := metadata
+	for _, key := range []string{"agent_identity", "agentIdentity"} {
+		if nested, ok := metadata[key].(map[string]any); ok {
+			identity = nested
+			break
+		}
+	}
+	return firstString(identity, "agent_runtime_id", "agentRuntimeId") != "" &&
+		firstString(identity, "agent_private_key", "agentPrivateKey", "private_key_pkcs8_base64", "privateKeyPkcs8Base64", "private_key", "privateKey") != ""
 }

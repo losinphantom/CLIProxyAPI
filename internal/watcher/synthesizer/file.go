@@ -95,6 +95,9 @@ func synthesizeFileAuths(ctx *SynthesisContext, fullPath string, data []byte) []
 	if provider == "gemini" {
 		provider = "gemini-cli"
 	}
+	if provider == "" && coreauth.IsAgentIdentityAuth(&coreauth.Auth{Metadata: metadata}) {
+		provider = "codex"
+	}
 	if ctx.PluginAuthParser != nil {
 		auths, handled, errParse := parsePluginFileAuths(ctx.PluginAuthParser, pluginapi.AuthParseRequest{
 			Provider: provider,

@@ -99,12 +99,27 @@ func (r *agentIdentityRuntime) loadCredential(callbackID, authIndex string) (cre
 	if err = json.Unmarshal(response.JSON, &metadata); err != nil {
 		return credential{}, errors.New("agent identity credential JSON is invalid")
 	}
+	identity := metadata
+	identityKey := ""
+	for _, key := range []string{"agent_identity", "agentIdentity"} {
+		if nested, ok := metadata[key].(map[string]any); ok {
+			identity = nested
+			identityKey = key
+			break
+		}
+	}
+	taskKey := "task_id"
+	if _, ok := identity["taskId"]; ok || identityKey == "agentIdentity" {
+		taskKey = "taskId"
+	}
 	value := credential{
-		runtimeID:  firstString(metadata, "agent_runtime_id"),
-		taskID:     firstString(metadata, "task_id"),
-		privateKey: firstString(metadata, "agent_private_key", "private_key_pkcs8_base64", "private_key"),
-		raw:        metadata,
-		name:       strings.TrimSpace(response.Name),
+		runtimeID:   firstString(identity, "agent_runtime_id", "agentRuntimeId"),
+		taskID:      firstString(identity, "task_id", "taskId"),
+		privateKey:  firstString(identity, "agent_private_key", "agentPrivateKey", "private_key_pkcs8_base64", "privateKeyPkcs8Base64", "private_key", "privateKey"),
+		raw:         metadata,
+		name:        strings.TrimSpace(response.Name),
+		identityKey: identityKey,
+		taskKey:     taskKey,
 	}
 	if value.runtimeID == "" || value.privateKey == "" || value.name == "" {
 		return credential{}, errors.New("agent identity credential is missing required fields")
@@ -121,7 +136,20 @@ func (r *agentIdentityRuntime) persistTask(callbackID string, value credential, 
 	for key, item := range value.raw {
 		metadata[key] = item
 	}
-	metadata["task_id"] = taskID
+	if value.identityKey == "" {
+		metadata[value.taskKey] = taskID
+	} else {
+		nestedRaw, ok := value.raw[value.identityKey].(map[string]any)
+		if !ok {
+			return credential{}, errors.New("agent identity credential JSON is invalid")
+		}
+		nested := make(map[string]any, len(nestedRaw)+1)
+		for key, item := range nestedRaw {
+			nested[key] = item
+		}
+		nested[value.taskKey] = taskID
+		metadata[value.identityKey] = nested
+	}
 	raw, err := json.Marshal(metadata)
 	if err != nil {
 		return credential{}, errors.New("failed to serialize agent identity credential")

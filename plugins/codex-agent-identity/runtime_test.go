@@ -161,6 +161,101 @@ func TestAuthorizationRegistersAndPersistsMissingTaskOnceAcrossConcurrentRequest
 	}
 }
 
+func TestAuthorizationImportsNestedAgentIdentityAndPersistsTaskInPlace(t *testing.T) {
+	value, _ := testAgentIdentityCredential(t)
+	raw, err := json.Marshal(map[string]any{
+		"auth_mode": "agentIdentity",
+		"agent_identity": map[string]any{
+			"agent_runtime_id":  value.runtimeID,
+			"agent_private_key": value.privateKey,
+			"account_id":        "account-test",
+			"chatgpt_user_id":   "user-test",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal nested credential: %v", err)
+	}
+	host := &fakeHost{auth: pluginapi.HostAuthGetResponse{Name: "agent.json", JSON: raw}}
+	host.do = func(_ pluginapi.HTTPRequest, _ int) (pluginapi.HTTPResponse, error) {
+		return pluginapi.HTTPResponse{StatusCode: 200, Body: []byte(`{"task_id":"task-nested"}`)}, nil
+	}
+	runtime := newAgentIdentityRuntime(host)
+	runtime.now = func() time.Time { return time.Date(2026, 7, 22, 1, 2, 3, 0, time.UTC) }
+
+	if _, err = runtime.authorization(context.Background(), "callback", "idx"); err != nil {
+		t.Fatalf("authorization() error = %v", err)
+	}
+	var saved map[string]any
+	if err = json.Unmarshal(host.auth.JSON, &saved); err != nil {
+		t.Fatalf("unmarshal saved auth: %v", err)
+	}
+	nested, ok := saved["agent_identity"].(map[string]any)
+	if !ok || nested["task_id"] != "task-nested" {
+		t.Fatalf("nested persisted credential = %#v", saved)
+	}
+	if _, flattened := saved["task_id"]; flattened {
+		t.Fatalf("task_id was flattened: %#v", saved)
+	}
+}
+
+func TestMatchAcceptsStandardNestedAgentIdentityAuthJSON(t *testing.T) {
+	for name, metadata := range map[string]map[string]any{
+		"snake case": {
+			"auth_mode": "agentIdentity",
+			"agent_identity": map[string]any{
+				"agent_runtime_id":  "runtime-test",
+				"agent_private_key": "private-key-present",
+			},
+		},
+		"camel case": {
+			"authMode": "agentIdentity",
+			"agentIdentity": map[string]any{
+				"agentRuntimeId":  "runtime-test",
+				"agentPrivateKey": "private-key-present",
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if !matchesAgentIdentity(metadata) {
+				t.Fatalf("matchesAgentIdentity(%s) = false", name)
+			}
+		})
+	}
+}
+
+func TestAuthorizationPreservesCamelCaseNestedTaskLocation(t *testing.T) {
+	value, _ := testAgentIdentityCredential(t)
+	raw, err := json.Marshal(map[string]any{
+		"authMode": "agentIdentity",
+		"agentIdentity": map[string]any{
+			"agentRuntimeId":  value.runtimeID,
+			"agentPrivateKey": value.privateKey,
+			"accountId":       "account-test",
+			"chatgptUserId":   "user-test",
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal camel credential: %v", err)
+	}
+	host := &fakeHost{auth: pluginapi.HostAuthGetResponse{Name: "agent.json", JSON: raw}}
+	host.do = func(_ pluginapi.HTTPRequest, _ int) (pluginapi.HTTPResponse, error) {
+		return pluginapi.HTTPResponse{StatusCode: 200, Body: []byte(`{"taskId":"task-camel"}`)}, nil
+	}
+	runtime := newAgentIdentityRuntime(host)
+	runtime.now = func() time.Time { return time.Date(2026, 7, 22, 1, 2, 3, 0, time.UTC) }
+	if _, err = runtime.authorization(context.Background(), "callback", "idx"); err != nil {
+		t.Fatalf("authorization() error = %v", err)
+	}
+	var saved map[string]any
+	if err = json.Unmarshal(host.auth.JSON, &saved); err != nil {
+		t.Fatalf("unmarshal saved auth: %v", err)
+	}
+	nested := saved["agentIdentity"].(map[string]any)
+	if nested["taskId"] != "task-camel" {
+		t.Fatalf("nested taskId = %#v", nested["taskId"])
+	}
+}
+
 func TestRecoverTaskHandlesAllInvalidCodesAndPersistsReplacement(t *testing.T) {
 	for _, code := range []string{"invalid_task_id", "task_not_found", "task_expired"} {
 		t.Run(code, func(t *testing.T) {

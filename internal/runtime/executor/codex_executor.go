@@ -1105,8 +1105,15 @@ func codexAccountID(auth *cliproxyauth.Auth) string {
 	if auth == nil || auth.Metadata == nil {
 		return ""
 	}
-	for _, key := range []string{"account_id", "chatgpt_account_id"} {
-		if value, ok := auth.Metadata[key].(string); ok && strings.TrimSpace(value) != "" {
+	metadata := auth.Metadata
+	for _, key := range []string{"agent_identity", "agentIdentity"} {
+		if nested, ok := metadata[key].(map[string]any); ok {
+			metadata = nested
+			break
+		}
+	}
+	for _, key := range []string{"account_id", "accountId", "chatgpt_account_id", "chatgptAccountId"} {
+		if value, ok := metadata[key].(string); ok && strings.TrimSpace(value) != "" {
 			return strings.TrimSpace(value)
 		}
 	}

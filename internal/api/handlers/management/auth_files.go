@@ -809,15 +809,17 @@ func redactAgentIdentityPrivateKey(data []byte) []byte {
 		return data
 	}
 	redact := func(values map[string]any) {
-		for _, key := range []string{"agent_private_key", "private_key_pkcs8_base64", "private_key"} {
+		for _, key := range []string{"agent_private_key", "agentPrivateKey", "private_key_pkcs8_base64", "privateKeyPkcs8Base64", "private_key", "privateKey"} {
 			if _, exists := values[key]; exists {
 				values[key] = "[redacted]"
 			}
 		}
 	}
 	redact(metadata)
-	if nested, ok := metadata["agent_identity"].(map[string]any); ok {
-		redact(nested)
+	for _, key := range []string{"agent_identity", "agentIdentity"} {
+		if nested, ok := metadata[key].(map[string]any); ok {
+			redact(nested)
+		}
 	}
 	redacted, err := json.Marshal(metadata)
 	if err != nil {

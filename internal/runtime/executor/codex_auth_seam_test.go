@@ -70,6 +70,29 @@ func TestCodexPrepareRequestLetsOutboundAuthSeamOverrideBearer(t *testing.T) {
 	}
 }
 
+func TestCodexPrepareRequestUsesAccountIDFromNestedAgentIdentity(t *testing.T) {
+	seam := &codexAuthSeamStub{match: true, authorization: "AgentAssertion fresh"}
+	auth := &cliproxyauth.Auth{ID: "agent-auth", Index: "agent-index", Provider: "codex", Metadata: map[string]any{
+		"auth_mode": "agentIdentity",
+		"agent_identity": map[string]any{
+			"agent_runtime_id":  "runtime-test",
+			"agent_private_key": "private-key-present",
+			"account_id":        "account-nested",
+			"chatgpt_user_id":   "user-nested",
+		},
+	}}
+	req, err := http.NewRequest(http.MethodPost, "https://example.test/responses", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if err = NewCodexExecutor(nil, seam).PrepareRequest(req, auth); err != nil {
+		t.Fatalf("PrepareRequest() error = %v", err)
+	}
+	if got := req.Header.Get("Chatgpt-Account-Id"); got != "account-nested" {
+		t.Fatalf("Chatgpt-Account-Id = %q", got)
+	}
+}
+
 func TestCodexPrepareRequestFailsClosedWithoutAgentIdentityPlugin(t *testing.T) {
 	req, err := http.NewRequest(http.MethodPost, "https://example.test/responses", nil)
 	if err != nil {

@@ -19,10 +19,10 @@ The seam is called after native Bearer and custom-header processing, immediately
 `plugins/codex-agent-identity` owns all protocol-specific behavior:
 
 1. Read the physical credential with `host.auth.get` by stable `auth_index`.
-2. Parse Base64 PKCS#8 Ed25519 key material.
+2. Accept standard `auth_mode: agentIdentity` nested auth JSON (snake_case or camelCase) and the flat CPA compatibility shape, then parse Base64 PKCS#8 Ed25519 key material.
 3. If `task_id` is absent, sign `runtime_id:RFC3339_timestamp` and register it at the OpenAI account auth endpoint.
 4. Accept plaintext task IDs or decrypt NaCl anonymous sealed-box task IDs using the Ed25519-to-Curve25519 conversion used by Codex.
-5. Persist the new task through `host.auth.save`.
+5. Persist the new task through `host.auth.save` in the same flat or nested credential location.
 6. Sign `runtime_id:task_id:RFC3339_timestamp` for every send or dial.
 7. On `invalid_task_id`, `task_not_found`, or `task_expired`, re-register under an auth-index lock and request one retry.
 

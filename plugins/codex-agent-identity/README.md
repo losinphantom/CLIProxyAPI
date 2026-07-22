@@ -37,24 +37,25 @@ Restart CPA after installing or replacing the shared library.
 
 ## Import a credential
 
-Import a flat Codex auth JSON file through the existing auth-file API or place it in the configured auth directory:
+Import a Codex Agent Identity `auth.json` through the existing auth-file API or place it in the configured auth directory. The standard nested shape is accepted directly; `type: codex` is optional because CPA infers the provider from `auth_mode`:
 
 ```json
 {
-  "type": "codex",
-  "auth_kind": "agent_identity",
-  "agent_runtime_id": "agent-runtime-id",
-  "agent_private_key": "<base64-pkcs8-ed25519-private-key>",
-  "task_id": "optional-existing-task-id",
-  "account_id": "chatgpt-account-id",
-  "chatgpt_user_id": "chatgpt-user-id",
-  "email": "optional@example.com",
-  "websockets": true,
-  "disabled": false
+  "auth_mode": "agentIdentity",
+  "agent_identity": {
+    "agent_runtime_id": "agent-runtime-id",
+    "agent_private_key": "<base64-pkcs8-ed25519-private-key>",
+    "task_id": "optional-existing-task-id",
+    "account_id": "chatgpt-account-id",
+    "chatgpt_user_id": "chatgpt-user-id",
+    "email": "optional@example.com"
+  }
 }
 ```
 
-`task_id` is optional. The first request registers and persists one when it is absent. `chatgpt_account_id` is accepted as an alias for `account_id`; `private_key_pkcs8_base64` and `private_key` are accepted as private-key import aliases.
+The equivalent camelCase nested shape and the earlier flat CPA shape (`type: codex`, `auth_kind: agent_identity`) are also accepted. `task_id` is optional. The first request registers and persists one in the same flat or nested location when it is absent. `chatgpt_account_id` is accepted as an alias for `account_id`; `private_key_pkcs8_base64` and `private_key` are accepted as private-key import aliases.
+
+This plugin consumes an already-provisioned Agent Identity file; it does not create an Agent Identity or convert a normal ChatGPT OAuth login into one. The public `codex login` browser flow produces ordinary ChatGPT OAuth credentials, not the Ed25519 Agent Identity material required here.
 
 Example Management API import (replace the placeholder locally; do not paste credentials into logs or shell history):
 

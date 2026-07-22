@@ -44,6 +44,28 @@ func TestAuthKind(t *testing.T) {
 			want: AuthKindAgentIdentity,
 		},
 		{
+			name: "standard nested agent identity auth json",
+			auth: &Auth{Metadata: map[string]any{
+				"auth_mode": "agentIdentity",
+				"agent_identity": map[string]any{
+					"agent_runtime_id":  "runtime-test",
+					"agent_private_key": "private-key-present",
+				},
+			}},
+			want: AuthKindAgentIdentity,
+		},
+		{
+			name: "camel case nested agent identity auth json",
+			auth: &Auth{Metadata: map[string]any{
+				"authMode": "agentIdentity",
+				"agentIdentity": map[string]any{
+					"agentRuntimeId":  "runtime-test",
+					"agentPrivateKey": "private-key-present",
+				},
+			}},
+			want: AuthKindAgentIdentity,
+		},
+		{
 			name: "unknown metadata shape",
 			auth: &Auth{Metadata: map[string]any{"type": "test"}},
 			want: "",
@@ -131,5 +153,20 @@ func TestAccountInfoUsesAuthKind(t *testing.T) {
 	kind, value = oauthWithoutEmail.AccountInfo()
 	if kind != "oauth" || value != "" {
 		t.Fatalf("oauth without email AccountInfo() = %q, %q", kind, value)
+	}
+
+	nestedAgent := &Auth{Metadata: map[string]any{
+		"auth_mode": "agentIdentity",
+		"agent_identity": map[string]any{
+			"email":             "agent@example.com",
+			"agent_runtime_id":  "runtime-test",
+			"agent_private_key": "private-key-present",
+			"account_id":        "account-test",
+			"chatgpt_user_id":   "user-test",
+		},
+	}}
+	kind, value = nestedAgent.AccountInfo()
+	if kind != AuthKindAgentIdentity || value != "agent@example.com" {
+		t.Fatalf("nested agent AccountInfo() = %q, %q", kind, value)
 	}
 }
