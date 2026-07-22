@@ -574,6 +574,22 @@ func (a *Auth) AccountInfo() (string, string) {
 			}
 		}
 		return "oauth", ""
+	case AuthKindAgentIdentity:
+		if a.Metadata != nil {
+			metadata := a.Metadata
+			for _, key := range []string{"agent_identity", "agentIdentity"} {
+				if nested, ok := metadata[key].(map[string]any); ok {
+					metadata = nested
+					break
+				}
+			}
+			for _, key := range []string{"email", "agent_runtime_id", "agentRuntimeId"} {
+				if value, ok := metadata[key].(string); ok && strings.TrimSpace(value) != "" {
+					return AuthKindAgentIdentity, strings.TrimSpace(value)
+				}
+			}
+		}
+		return AuthKindAgentIdentity, ""
 	case AuthKindAPIKey:
 		if apiKey := authAttribute(a, AttributeAPIKey); apiKey != "" {
 			return "api_key", apiKey

@@ -663,6 +663,7 @@ func validPlugin(plugin pluginapi.Plugin) bool {
 	return caps.ModelRegistrar != nil ||
 		caps.ModelProvider != nil ||
 		caps.AuthProvider != nil ||
+		caps.CodexAuth != nil ||
 		caps.FrontendAuthProvider != nil ||
 		caps.Scheduler != nil ||
 		caps.ModelRouter != nil ||

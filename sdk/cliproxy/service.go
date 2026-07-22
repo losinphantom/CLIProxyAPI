@@ -1039,7 +1039,7 @@ func (s *Service) registerExecutorForAuth(a *coreauth.Auth, forceReplace bool) {
 				}
 			}
 		}
-		s.coreManager.RegisterExecutor(executor.NewCodexAutoExecutor(s.cfg))
+		s.coreManager.RegisterExecutor(executor.NewCodexAutoExecutor(s.cfg, s.pluginHost))
 		return
 	}
 	// Skip disabled auth entries when (re)binding executors.

@@ -22,6 +22,7 @@ type rpcCapabilities struct {
 	ModelRegistrar                bool                         `json:"model_registrar"`
 	ModelProvider                 bool                         `json:"model_provider"`
 	AuthProvider                  bool                         `json:"auth_provider"`
+	CodexAuth                     bool                         `json:"codex_auth"`
 	FrontendAuthProvider          bool                         `json:"frontend_auth_provider"`
 	FrontendAuthProviderExclusive bool                         `json:"frontend_auth_provider_exclusive"`
 	Scheduler                     bool                         `json:"scheduler"`
@@ -70,6 +71,16 @@ type rpcAuthRefreshRequest struct {
 
 type rpcAuthModelRequest struct {
 	pluginapi.AuthModelRequest
+	HostCallbackID string `json:"host_callback_id,omitempty"`
+}
+
+type rpcCodexAuthAuthorizationRequest struct {
+	pluginapi.CodexAuthAuthorizationRequest
+	HostCallbackID string `json:"host_callback_id,omitempty"`
+}
+
+type rpcCodexAuthRecoveryRequest struct {
+	pluginapi.CodexAuthRecoveryRequest
 	HostCallbackID string `json:"host_callback_id,omitempty"`
 }
 
@@ -127,6 +138,7 @@ func rpcCapabilitiesFromPlugin(plugin pluginapi.Plugin) rpcCapabilities {
 		ModelRegistrar:                caps.ModelRegistrar != nil,
 		ModelProvider:                 caps.ModelProvider != nil,
 		AuthProvider:                  caps.AuthProvider != nil,
+		CodexAuth:                     caps.CodexAuth != nil,
 		FrontendAuthProvider:          caps.FrontendAuthProvider != nil,
 		FrontendAuthProviderExclusive: caps.FrontendAuthProvider != nil && caps.FrontendAuthProviderExclusive,
 		Scheduler:                     caps.Scheduler != nil,

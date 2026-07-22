@@ -23,6 +23,10 @@ type rpcAuthProvider struct {
 	*rpcPluginAdapter
 }
 
+type rpcCodexAuth struct {
+	*rpcPluginAdapter
+}
+
 type rpcFrontendAuthProvider struct {
 	*rpcPluginAdapter
 }
@@ -85,6 +89,9 @@ func registerRPCPlugin(ctx context.Context, host *Host, id string, client plugin
 	}
 	if resp.Capabilities.AuthProvider {
 		plugin.Capabilities.AuthProvider = rpcAuthProvider{rpcPluginAdapter: adapter}
+	}
+	if resp.Capabilities.CodexAuth {
+		plugin.Capabilities.CodexAuth = rpcCodexAuth{rpcPluginAdapter: adapter}
 	}
 	if resp.Capabilities.FrontendAuthProvider {
 		plugin.Capabilities.FrontendAuthProvider = rpcFrontendAuthProvider{rpcPluginAdapter: adapter}
@@ -416,6 +423,31 @@ func (a *rpcPluginAdapter) RefreshAuth(ctx context.Context, req pluginapi.AuthRe
 	return callPlugin[pluginapi.AuthRefreshResponse](ctx, a.client, pluginabi.MethodAuthRefresh, rpcAuthRefreshRequest{
 		AuthRefreshRequest: req,
 		HostCallbackID:     callbackID,
+	})
+}
+
+func (a rpcCodexAuth) Match(metadata map[string]any) bool {
+	resp, errMatch := callPlugin[pluginapi.CodexAuthMatchResponse](context.Background(), a.client, pluginabi.MethodCodexAuthMatch, pluginapi.CodexAuthMatchRequest{
+		AuthMetadata: cloneAnyMap(metadata),
+	})
+	return errMatch == nil && resp.Matched
+}
+
+func (a rpcCodexAuth) Authorization(ctx context.Context, req pluginapi.CodexAuthAuthorizationRequest) (pluginapi.CodexAuthAuthorizationResponse, error) {
+	callbackID, closeCallback := a.openHostCallbackContext(ctx)
+	defer closeCallback()
+	return callPlugin[pluginapi.CodexAuthAuthorizationResponse](ctx, a.client, pluginabi.MethodCodexAuthAuthorization, rpcCodexAuthAuthorizationRequest{
+		CodexAuthAuthorizationRequest: req,
+		HostCallbackID:                callbackID,
+	})
+}
+
+func (a rpcCodexAuth) RecoverTask(ctx context.Context, req pluginapi.CodexAuthRecoveryRequest) (pluginapi.CodexAuthRecoveryResponse, error) {
+	callbackID, closeCallback := a.openHostCallbackContext(ctx)
+	defer closeCallback()
+	return callPlugin[pluginapi.CodexAuthRecoveryResponse](ctx, a.client, pluginabi.MethodCodexAuthRecoverTask, rpcCodexAuthRecoveryRequest{
+		CodexAuthRecoveryRequest: req,
+		HostCallbackID:           callbackID,
 	})
 }
 

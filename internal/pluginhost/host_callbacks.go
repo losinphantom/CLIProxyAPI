@@ -145,7 +145,7 @@ func (h *Host) callHostHTTPDo(ctx context.Context, request []byte) ([]byte, erro
 		return nil, errDecode
 	}
 	ctx = h.resolveCallbackContext(callbackID, ctx)
-	resp, errDo := h.newHTTPClient(nil).Do(ctx, httpReq)
+	resp, errDo := h.newHTTPClient(codexAuthFromContext(ctx)).Do(ctx, httpReq)
 	if errDo != nil {
 		return nil, errDo
 	}
@@ -162,7 +162,7 @@ func (h *Host) callHostHTTPDoStream(ctx context.Context, request []byte) ([]byte
 		ctx = context.Background()
 	}
 	streamCtx, cancel := context.WithCancel(ctx)
-	resp, errDo := h.newHTTPClient(nil).DoStream(streamCtx, httpReq)
+	resp, errDo := h.newHTTPClient(codexAuthFromContext(ctx)).DoStream(streamCtx, httpReq)
 	if errDo != nil {
 		cancel()
 		return nil, errDo

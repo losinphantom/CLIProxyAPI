@@ -26,6 +26,10 @@ const (
 	MethodAuthLoginPoll  = "auth.login.poll"
 	MethodAuthRefresh    = "auth.refresh"
 
+	MethodCodexAuthMatch         = "codex_auth.match"
+	MethodCodexAuthAuthorization = "codex_auth.authorization"
+	MethodCodexAuthRecoverTask   = "codex_auth.recover_task"
+
 	MethodFrontendAuthIdentifier   = "frontend_auth.identifier"
 	MethodFrontendAuthAuthenticate = "frontend_auth.authenticate"
 

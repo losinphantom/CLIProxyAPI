@@ -73,6 +73,8 @@ type Capabilities struct {
 	ModelProvider ModelProvider
 	// AuthProvider lets the host parse, login, poll, and refresh plugin provider auths.
 	AuthProvider AuthProvider
+	// CodexAuth owns final outbound Codex authorization and task recovery for matching credentials.
+	CodexAuth CodexAuth
 	// FrontendAuthProvider authenticates frontend requests before proxy handling.
 	FrontendAuthProvider FrontendAuthProvider
 	// FrontendAuthProviderExclusive makes this frontend auth provider the only active request auth provider when selected.
@@ -115,6 +117,40 @@ type Capabilities struct {
 	CommandLinePlugin CommandLinePlugin
 	// ManagementAPI declares plugin-owned diagnostic Management API and resource routes.
 	ManagementAPI ManagementAPI
+}
+
+// CodexAuth is the plugin side of the final outbound Codex authentication seam.
+type CodexAuth interface {
+	Match(authMetadata map[string]any) bool
+	Authorization(context.Context, CodexAuthAuthorizationRequest) (CodexAuthAuthorizationResponse, error)
+	RecoverTask(context.Context, CodexAuthRecoveryRequest) (CodexAuthRecoveryResponse, error)
+}
+
+type CodexAuthMatchRequest struct {
+	AuthMetadata map[string]any `json:"auth_metadata"`
+}
+
+type CodexAuthMatchResponse struct {
+	Matched bool `json:"matched"`
+}
+
+type CodexAuthAuthorizationRequest struct {
+	AuthIndex string `json:"auth_index"`
+}
+
+type CodexAuthAuthorizationResponse struct {
+	Authorization string `json:"authorization"`
+}
+
+type CodexAuthRecoveryRequest struct {
+	AuthIndex     string `json:"auth_index"`
+	Authorization string `json:"authorization"`
+	Status        int    `json:"status"`
+	Body          []byte `json:"body,omitempty"`
+}
+
+type CodexAuthRecoveryResponse struct {
+	Retry bool `json:"retry"`
 }
 
 // ExecutorModelScope declares which model-registration paths a plugin executor supports.

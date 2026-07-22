@@ -73,6 +73,27 @@ func TestRPCCapabilitiesIncludeScheduler(t *testing.T) {
 	}
 }
 
+func TestRPCCodexAuthCapabilityUsesAdapter(t *testing.T) {
+	provider := &codexAuthPluginStub{}
+	lookup := newTestSymbolLookup(&testPlugin{registerResult: pluginapi.Plugin{
+		Capabilities: pluginapi.Capabilities{CodexAuth: provider},
+	}})
+	plugin, err := registerRPCPlugin(context.Background(), nil, "agent-identity", lookup, pluginabi.MethodPluginRegister, nil)
+	if err != nil {
+		t.Fatalf("registerRPCPlugin() error = %v", err)
+	}
+	if plugin.Capabilities.CodexAuth == nil || !plugin.Capabilities.CodexAuth.Match(map[string]any{"auth_kind": "agent_identity"}) {
+		t.Fatal("registered Codex auth adapter did not match")
+	}
+	resp, err := plugin.Capabilities.CodexAuth.Authorization(context.Background(), pluginapi.CodexAuthAuthorizationRequest{AuthIndex: "idx"})
+	if err != nil {
+		t.Fatalf("Authorization() error = %v", err)
+	}
+	if resp.Authorization != "AgentAssertion plugin" {
+		t.Fatalf("Authorization() = %q", resp.Authorization)
+	}
+}
+
 func TestRPCCapabilitiesIncludeModelRouter(t *testing.T) {
 	plugin := pluginapi.Plugin{
 		Capabilities: pluginapi.Capabilities{

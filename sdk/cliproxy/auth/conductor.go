@@ -5899,6 +5899,9 @@ func (m *Manager) shouldRefresh(a *Auth, now time.Time) bool {
 	if hasUnauthorizedAuthFailure(a) {
 		return false
 	}
+	if a.AuthKind() == AuthKindAgentIdentity {
+		return false
+	}
 	if !a.NextRefreshAfter.IsZero() && now.Before(a.NextRefreshAfter) {
 		return false
 	}
@@ -6162,6 +6165,9 @@ func clearUnauthorizedModelStates(auth *Auth, now time.Time) []string {
 // current auth can be retried before fallback/suspend.
 func (m *Manager) tryRefreshAfterUnauthorized(ctx context.Context, auth *Auth, execErr error, alreadyTried bool) (*Auth, bool) {
 	if m == nil || auth == nil || alreadyTried || execErr == nil {
+		return auth, false
+	}
+	if auth.AuthKind() == AuthKindAgentIdentity {
 		return auth, false
 	}
 	if !isUnauthorizedError(execErr) || !authHasRefreshCredential(auth) {

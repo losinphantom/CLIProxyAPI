@@ -86,9 +86,9 @@ type codexWebsocketSession struct {
 	upstreamDisconnectErr     error
 }
 
-func NewCodexWebsocketsExecutor(cfg *config.Config) *CodexWebsocketsExecutor {
+func NewCodexWebsocketsExecutor(cfg *config.Config, outboundAuth ...helps.CodexOutboundAuth) *CodexWebsocketsExecutor {
 	return &CodexWebsocketsExecutor{
-		CodexExecutor: NewCodexExecutor(cfg),
+		CodexExecutor: NewCodexExecutor(cfg, outboundAuth...),
 		store:         globalCodexWebsocketSessionStore,
 	}
 }
@@ -904,13 +904,46 @@ func (e *CodexWebsocketsExecutor) dialCodexWebsocket(ctx context.Context, auth *
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	conn, resp, err := dialer.DialContext(ctx, wsURL, headers)
-	if conn != nil {
-		// Avoid gorilla/websocket flate tail validation issues on some upstreams/Go versions.
-		// Negotiating permessage-deflate is fine; we just don't compress outbound messages.
-		conn.EnableWriteCompression(false)
+	for attempt := 0; attempt < 2; attempt++ {
+		dialHeaders := headers.Clone()
+		if dialHeaders == nil {
+			dialHeaders = make(http.Header)
+		}
+		if err := e.applyFinalCodexAuthorization(ctx, dialHeaders, auth); err != nil {
+			return nil, nil, err
+		}
+		authorization := dialHeaders.Get("Authorization")
+		conn, resp, err := dialer.DialContext(ctx, wsURL, dialHeaders)
+		if conn != nil {
+			// Avoid gorilla/websocket flate tail validation issues on some upstreams/Go versions.
+			// Negotiating permessage-deflate is fine; we just don't compress outbound messages.
+			conn.EnableWriteCompression(false)
+			return conn, resp, err
+		}
+		if err == nil || attempt > 0 || resp == nil || e.outboundAuth == nil || auth == nil || !e.outboundAuth.Match(auth.Metadata) {
+			return nil, resp, err
+		}
+		body := []byte(nil)
+		if resp.Body != nil {
+			body, _ = io.ReadAll(resp.Body)
+			if errClose := resp.Body.Close(); errClose != nil {
+				log.Errorf("codex websockets executor: close rejected handshake body error: %v", errClose)
+			}
+			resp.Body = io.NopCloser(bytes.NewReader(body))
+		}
+		auth.EnsureIndex()
+		retry, errRecover := e.outboundAuth.RecoverTask(ctx, auth.Index, authorization, resp.StatusCode, body)
+		if errRecover != nil {
+			return nil, resp, fmt.Errorf("codex outbound auth recovery: %w", errRecover)
+		}
+		if !retry {
+			return nil, resp, err
+		}
+		if resp.Body != nil {
+			_ = resp.Body.Close()
+		}
 	}
-	return conn, resp, err
+	return nil, nil, fmt.Errorf("codex outbound auth recovery exhausted")
 }
 
 func writeCodexWebsocketMessage(sess *codexWebsocketSession, conn *websocket.Conn, payload []byte) error {
@@ -1196,12 +1229,8 @@ func applyCodexWebsocketHeaders(ctx context.Context, headers http.Header, auth *
 		headers.Set("Originator", codexOriginator)
 	}
 	if !isAPIKey {
-		if auth != nil && auth.Metadata != nil {
-			if accountID, ok := auth.Metadata["account_id"].(string); ok {
-				if trimmed := strings.TrimSpace(accountID); trimmed != "" {
-					setHeaderCasePreserved(headers, "ChatGPT-Account-ID", trimmed)
-				}
-			}
+		if accountID := codexAccountID(auth); accountID != "" {
+			setHeaderCasePreserved(headers, "ChatGPT-Account-ID", accountID)
 		}
 	}
 
@@ -1953,10 +1982,10 @@ type CodexAutoExecutor struct {
 	wsExec   *CodexWebsocketsExecutor
 }
 
-func NewCodexAutoExecutor(cfg *config.Config) *CodexAutoExecutor {
+func NewCodexAutoExecutor(cfg *config.Config, outboundAuth ...helps.CodexOutboundAuth) *CodexAutoExecutor {
 	return &CodexAutoExecutor{
-		httpExec: NewCodexExecutor(cfg),
-		wsExec:   NewCodexWebsocketsExecutor(cfg),
+		httpExec: NewCodexExecutor(cfg, outboundAuth...),
+		wsExec:   NewCodexWebsocketsExecutor(cfg, outboundAuth...),
 	}
 }
 

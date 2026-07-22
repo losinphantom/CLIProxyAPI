@@ -3,8 +3,9 @@ package auth
 import "strings"
 
 const (
-	AuthKindAPIKey = "apikey"
-	AuthKindOAuth  = "oauth"
+	AuthKindAPIKey        = "apikey"
+	AuthKindOAuth         = "oauth"
+	AuthKindAgentIdentity = "agent_identity"
 
 	AuthSourceConfig      = "config"
 	AuthSourceFile        = "file"
@@ -32,6 +33,9 @@ func (a *Auth) AuthKind() string {
 	}
 	if kind := normalizeAuthKind(authMetadataString(a, AttributeAuthKind)); kind != "" {
 		return kind
+	}
+	if IsAgentIdentityAuth(a) {
+		return AuthKindAgentIdentity
 	}
 	if authAttribute(a, AttributeAPIKey) != "" {
 		return AuthKindAPIKey
@@ -79,9 +83,50 @@ func normalizeAuthKind(kind string) string {
 		return AuthKindAPIKey
 	case AuthKindOAuth, "oauth2":
 		return AuthKindOAuth
+	case AuthKindAgentIdentity, "agent-identity":
+		return AuthKindAgentIdentity
 	default:
 		return ""
 	}
+}
+
+// IsAgentIdentityAuth reports whether auth carries Codex Agent Identity
+// material. task_id is intentionally optional because the plugin registers it
+// on the first request when absent.
+func IsAgentIdentityAuth(auth *Auth) bool {
+	if auth == nil {
+		return false
+	}
+	if normalizeAuthKind(authAttribute(auth, AttributeAuthKind)) == AuthKindAgentIdentity ||
+		normalizeAuthKind(authMetadataString(auth, AttributeAuthKind)) == AuthKindAgentIdentity ||
+		strings.EqualFold(authMetadataString(auth, "type"), AuthKindAgentIdentity) ||
+		isAgentIdentityMode(authMetadataString(auth, "auth_mode")) ||
+		isAgentIdentityMode(authMetadataString(auth, "authMode")) {
+		return true
+	}
+	metadata := auth.Metadata
+	for _, key := range []string{"agent_identity", "agentIdentity"} {
+		if nested, ok := metadata[key].(map[string]any); ok {
+			metadata = nested
+			break
+		}
+	}
+	metadataString := func(keys ...string) string {
+		for _, key := range keys {
+			if value, ok := metadata[key].(string); ok && strings.TrimSpace(value) != "" {
+				return strings.TrimSpace(value)
+			}
+		}
+		return ""
+	}
+	return metadataString("agent_runtime_id", "agentRuntimeId") != "" &&
+		metadataString("agent_private_key", "agentPrivateKey", "private_key_pkcs8_base64", "privateKeyPkcs8Base64", "private_key", "privateKey") != ""
+}
+
+func isAgentIdentityMode(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.NewReplacer("_", "", "-", "").Replace(normalized)
+	return normalized == "agentidentity"
 }
 
 func normalizeAuthSourceKind(source string) string {

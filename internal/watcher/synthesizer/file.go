@@ -65,6 +65,21 @@ func SynthesizeAuthFile(ctx *SynthesisContext, fullPath string, data []byte) []*
 	return synthesizeFileAuths(ctx, fullPath, data)
 }
 
+func resolveFileAuthKind(auth *coreauth.Auth) string {
+	if coreauth.IsAgentIdentityAuth(auth) {
+		return coreauth.AuthKindAgentIdentity
+	}
+	if auth != nil {
+		switch auth.AuthKind() {
+		case coreauth.AuthKindAPIKey:
+			return coreauth.AuthKindAPIKey
+		case coreauth.AuthKindOAuth:
+			return coreauth.AuthKindOAuth
+		}
+	}
+	return coreauth.AuthKindOAuth
+}
+
 func synthesizeFileAuths(ctx *SynthesisContext, fullPath string, data []byte) []*coreauth.Auth {
 	if ctx == nil || len(data) == 0 {
 		return nil
@@ -79,6 +94,9 @@ func synthesizeFileAuths(ctx *SynthesisContext, fullPath string, data []byte) []
 	provider := strings.ToLower(strings.TrimSpace(t))
 	if provider == "gemini" {
 		provider = "gemini-cli"
+	}
+	if provider == "" && coreauth.IsAgentIdentityAuth(&coreauth.Auth{Metadata: metadata}) {
+		provider = "codex"
 	}
 	if ctx.PluginAuthParser != nil {
 		auths, handled, errParse := parsePluginFileAuths(ctx.PluginAuthParser, pluginapi.AuthParseRequest{
@@ -119,7 +137,7 @@ func synthesizeFileAuths(ctx *SynthesisContext, fullPath string, data []byte) []
 					auth.Metadata["disabled"] = true
 				}
 				coreauth.SetOAuthModelAliasesAttribute(auth, perAccountModelAliases)
-				ApplyAuthExcludedModelsMeta(auth, cfg, perAccountExcluded, "oauth")
+				ApplyAuthExcludedModelsMeta(auth, cfg, perAccountExcluded, resolveFileAuthKind(auth))
 				coreauth.ApplyCustomHeadersFromMetadata(auth)
 			}
 			return auths
@@ -206,7 +224,7 @@ func synthesizeFileAuths(ctx *SynthesisContext, fullPath string, data []byte) []
 	}
 	coreauth.ApplyCustomHeadersFromMetadata(a)
 	coreauth.SetOAuthModelAliasesAttribute(a, perAccountModelAliases)
-	ApplyAuthExcludedModelsMeta(a, cfg, perAccountExcluded, "oauth")
+	ApplyAuthExcludedModelsMeta(a, cfg, perAccountExcluded, resolveFileAuthKind(a))
 	// For codex auth files, extract plan_type from the JWT id_token.
 	if provider == "codex" {
 		if idTokenRaw, ok := metadata["id_token"].(string); ok && strings.TrimSpace(idTokenRaw) != "" {
