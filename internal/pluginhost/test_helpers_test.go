@@ -125,6 +125,41 @@ func (l *testSymbolLookup) Call(ctx context.Context, method string, request []by
 			return nil, fmt.Errorf("missing auth provider")
 		}
 		return marshalRPCResult(rpcIdentifierResponse{Identifier: l.active.Capabilities.AuthProvider.Identifier()})
+	case pluginabi.MethodCodexAuthMatch:
+		if l.active.Capabilities.CodexAuth == nil {
+			return nil, fmt.Errorf("missing Codex auth provider")
+		}
+		var req pluginapi.CodexAuthMatchRequest
+		if errUnmarshal := json.Unmarshal(request, &req); errUnmarshal != nil {
+			return nil, errUnmarshal
+		}
+		return marshalRPCResult(pluginapi.CodexAuthMatchResponse{Matched: l.active.Capabilities.CodexAuth.Match(req.AuthMetadata)})
+	case pluginabi.MethodCodexAuthAuthorization:
+		if l.active.Capabilities.CodexAuth == nil {
+			return nil, fmt.Errorf("missing Codex auth provider")
+		}
+		var req rpcCodexAuthAuthorizationRequest
+		if errUnmarshal := json.Unmarshal(request, &req); errUnmarshal != nil {
+			return nil, errUnmarshal
+		}
+		resp, errAuthorization := l.active.Capabilities.CodexAuth.Authorization(ctx, req.CodexAuthAuthorizationRequest)
+		if errAuthorization != nil {
+			return nil, errAuthorization
+		}
+		return marshalRPCResult(resp)
+	case pluginabi.MethodCodexAuthRecoverTask:
+		if l.active.Capabilities.CodexAuth == nil {
+			return nil, fmt.Errorf("missing Codex auth provider")
+		}
+		var req rpcCodexAuthRecoveryRequest
+		if errUnmarshal := json.Unmarshal(request, &req); errUnmarshal != nil {
+			return nil, errUnmarshal
+		}
+		resp, errRecovery := l.active.Capabilities.CodexAuth.RecoverTask(ctx, req.CodexAuthRecoveryRequest)
+		if errRecovery != nil {
+			return nil, errRecovery
+		}
+		return marshalRPCResult(resp)
 	case pluginabi.MethodSchedulerPick:
 		if l.active.Capabilities.Scheduler == nil {
 			return nil, fmt.Errorf("missing scheduler")

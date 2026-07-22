@@ -284,10 +284,17 @@ func codexTerminalErrorIsContextLength(body []byte) bool {
 // CodexExecutor is a stateless executor for Codex (OpenAI Responses API entrypoint).
 // If api_key is unavailable on auth, it falls back to legacy via ClientAdapter.
 type CodexExecutor struct {
-	cfg *config.Config
+	cfg          *config.Config
+	outboundAuth helps.CodexOutboundAuth
 }
 
-func NewCodexExecutor(cfg *config.Config) *CodexExecutor { return &CodexExecutor{cfg: cfg} }
+func NewCodexExecutor(cfg *config.Config, outboundAuth ...helps.CodexOutboundAuth) *CodexExecutor {
+	executor := &CodexExecutor{cfg: cfg}
+	if len(outboundAuth) > 0 {
+		executor.outboundAuth = outboundAuth[0]
+	}
+	return executor
+}
 
 func (e *CodexExecutor) Identifier() string { return "codex" }
 
@@ -1073,6 +1080,11 @@ func (e *CodexExecutor) PrepareRequest(req *http.Request, auth *cliproxyauth.Aut
 	if req == nil {
 		return nil
 	}
+	e.prepareCodexRequestHeaders(req, auth)
+	return e.applyFinalCodexAuthorization(req.Context(), req.Header, auth)
+}
+
+func (e *CodexExecutor) prepareCodexRequestHeaders(req *http.Request, auth *cliproxyauth.Auth) {
 	apiKey, _ := codexCreds(auth)
 	if strings.TrimSpace(apiKey) != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
@@ -1082,6 +1094,45 @@ func (e *CodexExecutor) PrepareRequest(req *http.Request, auth *cliproxyauth.Aut
 		attrs = auth.Attributes
 	}
 	util.ApplyCustomHeadersFromAttrs(req, attrs)
+	if !codexAuthUsesAPIKey(auth) {
+		if accountID := codexAccountID(auth); accountID != "" {
+			req.Header.Set("Chatgpt-Account-Id", accountID)
+		}
+	}
+}
+
+func codexAccountID(auth *cliproxyauth.Auth) string {
+	if auth == nil || auth.Metadata == nil {
+		return ""
+	}
+	for _, key := range []string{"account_id", "chatgpt_account_id"} {
+		if value, ok := auth.Metadata[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func (e *CodexExecutor) applyFinalCodexAuthorization(ctx context.Context, headers http.Header, auth *cliproxyauth.Auth) error {
+	if auth == nil {
+		return nil
+	}
+	matched := e != nil && e.outboundAuth != nil && e.outboundAuth.Match(auth.Metadata)
+	if !matched {
+		if auth.AuthKind() == cliproxyauth.AuthKindAgentIdentity {
+			return fmt.Errorf("codex agent identity auth requires an enabled outbound auth plugin")
+		}
+		return nil
+	}
+	auth.EnsureIndex()
+	authorization, err := e.outboundAuth.Authorization(ctx, auth.Index)
+	if err != nil {
+		return fmt.Errorf("codex outbound authorization: %w", err)
+	}
+	if strings.TrimSpace(authorization) == "" {
+		return fmt.Errorf("codex outbound authorization is empty")
+	}
+	headers.Set("Authorization", authorization)
 	return nil
 }
 
@@ -1094,11 +1145,54 @@ func (e *CodexExecutor) HttpRequest(ctx context.Context, auth *cliproxyauth.Auth
 		ctx = req.Context()
 	}
 	httpReq := req.WithContext(ctx)
-	if err := e.PrepareRequest(httpReq, auth); err != nil {
-		return nil, err
-	}
+	e.prepareCodexRequestHeaders(httpReq, auth)
 	httpClient := helps.NewUtlsHTTPClient(ctx, e.cfg, auth, 0)
-	return httpClient.Do(httpReq)
+	return e.doCodexRequest(ctx, auth, httpClient, httpReq)
+}
+
+type codexHTTPDoer interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+func (e *CodexExecutor) doCodexRequest(ctx context.Context, auth *cliproxyauth.Auth, client codexHTTPDoer, req *http.Request) (*http.Response, error) {
+	for attempt := 0; attempt < 2; attempt++ {
+		if err := e.applyFinalCodexAuthorization(ctx, req.Header, auth); err != nil {
+			return nil, err
+		}
+		authorization := req.Header.Get("Authorization")
+		resp, err := client.Do(req)
+		if err != nil || resp == nil || attempt > 0 || resp.StatusCode < http.StatusBadRequest || e == nil || e.outboundAuth == nil || auth == nil || !e.outboundAuth.Match(auth.Metadata) {
+			return resp, err
+		}
+		body, errRead := io.ReadAll(resp.Body)
+		if errClose := resp.Body.Close(); errClose != nil {
+			log.Errorf("codex executor: close response body error: %v", errClose)
+		}
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		if errRead != nil {
+			return resp, errRead
+		}
+		auth.EnsureIndex()
+		retry, errRecover := e.outboundAuth.RecoverTask(ctx, auth.Index, authorization, resp.StatusCode, body)
+		if errRecover != nil {
+			return nil, fmt.Errorf("codex outbound auth recovery: %w", errRecover)
+		}
+		if !retry {
+			return resp, nil
+		}
+		if req.GetBody == nil {
+			return nil, fmt.Errorf("codex outbound auth recovery requires a replayable request body")
+		}
+		if errClose := resp.Body.Close(); errClose != nil {
+			log.Errorf("codex executor: close replay response body error: %v", errClose)
+		}
+		replayedBody, errReplay := req.GetBody()
+		if errReplay != nil {
+			return nil, fmt.Errorf("codex outbound auth recovery replay body: %w", errReplay)
+		}
+		req.Body = replayedBody
+	}
+	return nil, fmt.Errorf("codex outbound auth recovery exhausted")
 }
 
 func (e *CodexExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
@@ -1182,7 +1276,7 @@ func (e *CodexExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, re
 	})
 	httpClient := helps.NewUtlsHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClient(httpClient)
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := e.doCodexRequest(ctx, auth, httpClient, httpReq)
 	if err != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, err)
 		return resp, err
@@ -1337,7 +1431,7 @@ func (e *CodexExecutor) executeCompact(ctx context.Context, auth *cliproxyauth.A
 	})
 	httpClient := helps.NewUtlsHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClient(httpClient)
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := e.doCodexRequest(ctx, auth, httpClient, httpReq)
 	if err != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, err)
 		return resp, err
@@ -1453,7 +1547,7 @@ func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Au
 
 	httpClient := helps.NewUtlsHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClient(httpClient)
-	httpResp, err := httpClient.Do(httpReq)
+	httpResp, err := e.doCodexRequest(ctx, auth, httpClient, httpReq)
 	if err != nil {
 		helps.RecordAPIResponseError(ctx, e.cfg, err)
 		return nil, err
@@ -1729,6 +1823,9 @@ func (e *CodexExecutor) Refresh(ctx context.Context, auth *cliproxyauth.Auth) (*
 	}
 	if auth == nil {
 		return nil, statusErr{code: 500, msg: "codex executor: auth is nil"}
+	}
+	if auth.AuthKind() == cliproxyauth.AuthKindAgentIdentity {
+		return auth, nil
 	}
 	var refreshToken string
 	if auth.Metadata != nil {
@@ -2019,10 +2116,8 @@ func applyCodexHeadersFromSources(r *http.Request, auth *cliproxyauth.Auth, toke
 		r.Header.Set("Originator", codexOriginator)
 	}
 	if !isAPIKey {
-		if auth != nil && auth.Metadata != nil {
-			if accountID, ok := auth.Metadata["account_id"].(string); ok {
-				r.Header.Set("Chatgpt-Account-Id", accountID)
-			}
+		if accountID := codexAccountID(auth); accountID != "" {
+			r.Header.Set("Chatgpt-Account-Id", accountID)
 		}
 	}
 	var attrs map[string]string

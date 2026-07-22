@@ -798,8 +798,32 @@ func (h *Handler) DownloadAuthFile(c *gin.Context) {
 		}
 		return
 	}
+	data = redactAgentIdentityPrivateKey(data)
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", name))
 	c.Data(200, "application/json", data)
+}
+
+func redactAgentIdentityPrivateKey(data []byte) []byte {
+	var metadata map[string]any
+	if json.Unmarshal(data, &metadata) != nil || !coreauth.IsAgentIdentityAuth(&coreauth.Auth{Metadata: metadata}) {
+		return data
+	}
+	redact := func(values map[string]any) {
+		for _, key := range []string{"agent_private_key", "private_key_pkcs8_base64", "private_key"} {
+			if _, exists := values[key]; exists {
+				values[key] = "[redacted]"
+			}
+		}
+	}
+	redact(metadata)
+	if nested, ok := metadata["agent_identity"].(map[string]any); ok {
+		redact(nested)
+	}
+	redacted, err := json.Marshal(metadata)
+	if err != nil {
+		return data
+	}
+	return redacted
 }
 
 // Upload auth file: multipart or raw JSON with ?name=

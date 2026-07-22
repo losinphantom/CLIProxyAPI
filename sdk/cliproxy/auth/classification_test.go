@@ -34,6 +34,16 @@ func TestAuthKind(t *testing.T) {
 			want: AuthKindOAuth,
 		},
 		{
+			name: "agent identity without task beats retained oauth metadata",
+			auth: &Auth{Metadata: map[string]any{
+				"type":              "codex",
+				"refresh_token":     "stale-refresh",
+				"agent_runtime_id":  "runtime-test",
+				"agent_private_key": "private-key-present",
+			}},
+			want: AuthKindAgentIdentity,
+		},
+		{
 			name: "unknown metadata shape",
 			auth: &Auth{Metadata: map[string]any{"type": "test"}},
 			want: "",

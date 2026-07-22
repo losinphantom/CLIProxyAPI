@@ -698,3 +698,26 @@ func TestFileSynthesizer_Synthesize_NoteParsing(t *testing.T) {
 		})
 	}
 }
+
+func TestSynthesizeAuthFileClassifiesAgentIdentityWithoutTaskAsNonOAuth(t *testing.T) {
+	tempDir := t.TempDir()
+	fullPath := filepath.Join(tempDir, "codex-agent.json")
+	raw := []byte(`{
+		"type":"codex",
+		"auth_kind":"agent_identity",
+		"email":"agent@example.com",
+		"refresh_token":"stale-refresh",
+		"agent_runtime_id":"runtime-test",
+		"agent_private_key":"private-key-present"
+	}`)
+	auths := SynthesizeAuthFile(&SynthesisContext{Config: &config.Config{}, AuthDir: tempDir, Now: time.Now()}, fullPath, raw)
+	if len(auths) != 1 {
+		t.Fatalf("SynthesizeAuthFile() len = %d, want 1", len(auths))
+	}
+	if got := auths[0].AuthKind(); got != coreauth.AuthKindAgentIdentity {
+		t.Fatalf("AuthKind() = %q, want %q", got, coreauth.AuthKindAgentIdentity)
+	}
+	if got := auths[0].Attributes[coreauth.AttributeAuthKind]; got != coreauth.AuthKindAgentIdentity {
+		t.Fatalf("auth_kind attribute = %q", got)
+	}
+}
