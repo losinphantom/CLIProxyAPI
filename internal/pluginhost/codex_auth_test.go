@@ -61,3 +61,19 @@ func TestHostCodexOutboundAuthDispatchesByMetadataAndAuthIndex(t *testing.T) {
 		t.Fatalf("retry = %v request = %#v", retry, plugin.recoveryRequest)
 	}
 }
+
+func TestValidPluginAcceptsCodexAuthOnly(t *testing.T) {
+	provider := &codexAuthPluginStub{}
+	plugin := pluginapi.Plugin{
+		Metadata: pluginapi.Metadata{
+			Name:             "codex-agent-identity",
+			Version:          "0.1.0",
+			Author:           "test",
+			GitHubRepository: "https://example.test/plugin",
+		},
+		Capabilities: pluginapi.Capabilities{CodexAuth: provider},
+	}
+	if !validPlugin(plugin) {
+		t.Fatal("validPlugin() rejected a CodexAuth-only plugin")
+	}
+}
