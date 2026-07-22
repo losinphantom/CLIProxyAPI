@@ -80,7 +80,7 @@ func matchesAgentIdentity(metadata map[string]any) bool {
 	kind := firstString(metadata, "auth_kind")
 	mode := firstString(metadata, "auth_mode", "authMode")
 	if strings.EqualFold(kind, "agent_identity") || strings.EqualFold(kind, "agent-identity") ||
-		strings.EqualFold(firstString(metadata, "type"), "agent_identity") || strings.EqualFold(mode, "agentIdentity") {
+		strings.EqualFold(firstString(metadata, "type"), "agent_identity") || isAgentIdentityMode(mode) {
 		return true
 	}
 	identity := metadata
@@ -92,4 +92,10 @@ func matchesAgentIdentity(metadata map[string]any) bool {
 	}
 	return firstString(identity, "agent_runtime_id", "agentRuntimeId") != "" &&
 		firstString(identity, "agent_private_key", "agentPrivateKey", "private_key_pkcs8_base64", "privateKeyPkcs8Base64", "private_key", "privateKey") != ""
+}
+
+func isAgentIdentityMode(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.NewReplacer("_", "", "-", "").Replace(normalized)
+	return normalized == "agentidentity"
 }

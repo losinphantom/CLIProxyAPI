@@ -200,6 +200,9 @@ func TestAuthorizationImportsNestedAgentIdentityAndPersistsTaskInPlace(t *testin
 
 func TestMatchAcceptsStandardNestedAgentIdentityAuthJSON(t *testing.T) {
 	for name, metadata := range map[string]map[string]any{
+		"generator declared mode": {
+			"auth_mode": "agent_identity",
+		},
 		"snake case": {
 			"auth_mode": "agentIdentity",
 			"agent_identity": map[string]any{

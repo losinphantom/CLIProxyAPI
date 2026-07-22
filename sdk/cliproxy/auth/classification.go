@@ -100,8 +100,8 @@ func IsAgentIdentityAuth(auth *Auth) bool {
 	if normalizeAuthKind(authAttribute(auth, AttributeAuthKind)) == AuthKindAgentIdentity ||
 		normalizeAuthKind(authMetadataString(auth, AttributeAuthKind)) == AuthKindAgentIdentity ||
 		strings.EqualFold(authMetadataString(auth, "type"), AuthKindAgentIdentity) ||
-		strings.EqualFold(authMetadataString(auth, "auth_mode"), "agentIdentity") ||
-		strings.EqualFold(authMetadataString(auth, "authMode"), "agentIdentity") {
+		isAgentIdentityMode(authMetadataString(auth, "auth_mode")) ||
+		isAgentIdentityMode(authMetadataString(auth, "authMode")) {
 		return true
 	}
 	metadata := auth.Metadata
@@ -121,6 +121,12 @@ func IsAgentIdentityAuth(auth *Auth) bool {
 	}
 	return metadataString("agent_runtime_id", "agentRuntimeId") != "" &&
 		metadataString("agent_private_key", "agentPrivateKey", "private_key_pkcs8_base64", "privateKeyPkcs8Base64", "private_key", "privateKey") != ""
+}
+
+func isAgentIdentityMode(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.NewReplacer("_", "", "-", "").Replace(normalized)
+	return normalized == "agentidentity"
 }
 
 func normalizeAuthSourceKind(source string) string {

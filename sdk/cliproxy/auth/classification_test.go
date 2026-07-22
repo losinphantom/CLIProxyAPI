@@ -55,6 +55,13 @@ func TestAuthKind(t *testing.T) {
 			want: AuthKindAgentIdentity,
 		},
 		{
+			name: "generator declared agent identity mode fails closed",
+			auth: &Auth{Metadata: map[string]any{
+				"auth_mode": "agent_identity",
+			}},
+			want: AuthKindAgentIdentity,
+		},
+		{
 			name: "camel case nested agent identity auth json",
 			auth: &Auth{Metadata: map[string]any{
 				"authMode": "agentIdentity",
